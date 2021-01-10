@@ -6,7 +6,7 @@ import time
 import json
 import datetime
 
-last_trigger_time = datetime.datetime.now()
+last_trigger_time = []
 configFileLocation = os.getenv('alarm_config_location') 
 if not configFileLocation :
     configFileLocation = '../appsettings.json'
@@ -16,20 +16,23 @@ config = json.load(configFile)
 
 r = redis.Redis(host=config['Redis']['ip'], port=config['Redis']['port'], db=0, password=config['Redis']['password'])
 r_pubsub = r.pubsub()
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(26, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.add_event_detect(26, GPIO.FALLING)
-def my_callback(self):
+
+def my_callback(zoneID):
     global last_trigger_time
     trigger_time = datetime.datetime.now()
-    time_since_last_trigger = trigger_time - last_trigger_time
+    time_since_last_trigger = trigger_time - last_trigger_time[zoneID]
     if time_since_last_trigger.total_seconds() > 30:
-        last_trigger_time = trigger_time
-        r.publish('ALARM_TRIGGER',0)
+        last_trigger_time[zoneID] = trigger_time
+        r.publish('ALARM_TRIGGER',zoneID)
         print ('Alarm Triggered')
 
-
-GPIO.add_event_callback(26, my_callback)
+GPIO.setmode(GPIO.BCM)
+sensorPins = config["Sensors"]["Pins"]
+for idx, pin in enumerate(sensorPins):
+    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.add_event_detect(pin, GPIO.FALLING)
+    GPIO.add_event_callback(pin, callback=lambda x:my_callback(idx))
+    last_trigger_time.append(datetime.datetime.now())
 
 #ALSO LISTEN ON TEST PUBSUB CHANNEL
 # r_pubsub.subscribe(**{'TEST_TRIGGER':my_callback})
